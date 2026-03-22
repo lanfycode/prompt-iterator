@@ -1,7 +1,6 @@
 """Single test page — run one prompt against one input with render preview."""
 from __future__ import annotations
 
-import json
 from typing import Any, Optional
 
 import gradio as gr
@@ -58,12 +57,14 @@ def build(
                 max_lines=10,
                 interactive=False,
             )
-            variables_box = gr.Textbox(
-                label="变量值(JSON)",
-                lines=8,
-                max_lines=14,
-                value="{}",
-                placeholder='例如: {"tone": "formal", "lang": "zh-CN"}',
+            variables_box = gr.Dataframe(
+                headers=["变量名", "变量值"],
+                datatype=["str", "str"],
+                row_count=(1, "dynamic"),
+                col_count=(2, "fixed"),
+                interactive=True,
+                wrap=True,
+                label="变量表单",
             )
             user_input_box = gr.Textbox(
                 label="单条测试输入",
@@ -115,15 +116,37 @@ def build(
         templates = template_service.list_all()
         return ["（不使用模板）"] + [f"{tpl.id[:8]}  {tpl.name}" for tpl in templates]
 
+    def _variables_to_rows(variables: dict[str, Any]) -> list[list[str]]:
+        if not variables:
+            return [["", ""]]
+        rows = [[str(name), "" if value is None else str(value)] for name, value in variables.items()]
+        return rows or [["", ""]]
+
+    def _normalize_variable_rows(variable_rows: Any) -> list[list[str]]:
+        if variable_rows is None:
+            return []
+        if hasattr(variable_rows, "values"):
+            variable_rows = variable_rows.values.tolist()
+        normalized: list[list[str]] = []
+        for row in variable_rows:
+            if row is None:
+                continue
+            name = "" if len(row) < 1 or row[0] is None else str(row[0]).strip()
+            value = "" if len(row) < 2 or row[1] is None else str(row[1])
+            if not name and not value:
+                continue
+            normalized.append([name, value])
+        return normalized
+
     def _refresh():
         prompts = prompt_service.list_prompts()
         prompt_choices = [f"{p.id[:8]}  {p.name}" for p in prompts]
         variables = variable_service.get_variables_dict(scope="all")
-        default_variables = json.dumps(variables, ensure_ascii=False, indent=2)
+        default_variables = _variables_to_rows(variables)
         return (
             gr.update(choices=prompt_choices, value=None),
             gr.update(choices=_template_choices(), value="（不使用模板）"),
-            default_variables,
+            gr.update(value=default_variables),
         )
 
     def _resolve_template(selector_value: Optional[str]) -> tuple[Optional[str], str]:
@@ -136,20 +159,22 @@ def build(
             return None, ""
         return match.id, match.content
 
-    def _parse_variables(variables_text: str) -> dict[str, str]:
-        if not variables_text.strip():
-            return {}
-        data = json.loads(variables_text)
-        if not isinstance(data, dict):
-            raise ValueError("变量值必须是 JSON 对象。")
-        return {str(key): "" if value is None else str(value) for key, value in data.items()}
+    def _parse_variables(variable_rows: Any) -> dict[str, str]:
+        variables: dict[str, str] = {}
+        for name, value in _normalize_variable_rows(variable_rows):
+            if not name:
+                raise ValueError("变量名不能为空。")
+            if name in variables:
+                raise ValueError(f"变量名重复：{name}")
+            variables[name] = value
+        return variables
 
-    def _render_request(version_id: str, template_value: str, variables_text: str, user_input: str):
+    def _render_request(version_id: str, template_value: str, variable_rows: Any, user_input: str):
         version = prompt_service.get_version_with_content(version_id)
         if not version or not version.content:
             raise ValueError("当前 Prompt 内容为空。")
 
-        variables = _parse_variables(variables_text)
+        variables = _parse_variables(variable_rows)
         template_id, template_content = _resolve_template(template_value)
         rendered_prompt = template_service.render(version.content, variables)
         rendered_template = template_service.render(template_content, variables) if template_content else ""
@@ -168,15 +193,15 @@ def build(
         )
         return rendered_prompt, final_preview, final_input, template_id
 
-    def _validate_actions(prompt_value: str, user_input: str, variables_text: str):
+    def _validate_actions(prompt_value: str, user_input: str, variable_rows: Any):
         if not prompt_value:
             return "请选择 Prompt。", gr.update(interactive=False), gr.update(interactive=False)
         if not user_input.strip():
             return "请填写单条测试输入。", gr.update(interactive=False), gr.update(interactive=False)
         try:
-            _parse_variables(variables_text)
+            _parse_variables(variable_rows)
         except Exception as exc:
-            return f"变量值格式错误：{exc}", gr.update(interactive=False), gr.update(interactive=False)
+            return f"变量表单填写有误：{exc}", gr.update(interactive=False), gr.update(interactive=False)
         return "参数已就绪，可以预览或执行单轮测试。", gr.update(interactive=True), gr.update(interactive=True)
 
     def _on_select_prompt(selector_value: str):
@@ -200,14 +225,14 @@ def build(
         _, content = _resolve_template(template_value)
         return content or "（未使用模板）"
 
-    def _on_preview(version_id: str, template_value: str, variables_text: str, user_input: str):
+    def _on_preview(version_id: str, template_value: str, variable_rows: Any, user_input: str):
         if not version_id:
             return gr.update(), gr.update(), "⚠ 请先选择 Prompt。"
         try:
             rendered_prompt, final_preview, _, _ = _render_request(
                 version_id,
                 template_value,
-                variables_text,
+                variable_rows,
                 user_input,
             )
             return rendered_prompt, final_preview, "已生成最终输入预览。"
@@ -215,17 +240,17 @@ def build(
             logger.error("Single test preview failed: %s", exc)
             return gr.update(), gr.update(), f"❌ 预览失败：{exc}"
 
-    def _on_run(version_id: str, model_name: str, template_value: str, variables_text: str, user_input: str):
+    def _on_run(version_id: str, model_name: str, template_value: str, variable_rows: Any, user_input: str):
         if not version_id:
             return gr.update(), gr.update(), gr.update(), gr.update(), "⚠ 请先选择 Prompt。"
         try:
             rendered_prompt, final_preview, actual_prompt_input, template_id = _render_request(
                 version_id,
                 template_value,
-                variables_text,
+                variable_rows,
                 user_input,
             )
-            variables = _parse_variables(variables_text)
+            variables = _parse_variables(variable_rows)
             _, template_content = _resolve_template(template_value)
             tr, result = test_run_service.run_single_test(
                 prompt_version_id=version_id,

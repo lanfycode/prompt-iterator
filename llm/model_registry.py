@@ -1,26 +1,32 @@
 """
-Model registry — single source of truth for supported Gemini models.
+Model registry — single source of truth for all supported LLM models.
 
-Adding a new model in Phase 3 means appending one entry to _MODELS.
+Supported providers:
+  - "gemini": Google Generative AI (google-genai SDK)
+  - "qwen":   Alibaba DashScope via OpenAI-compatible endpoint
+
+Adding a new model means appending one entry to _MODELS.
 All UI components and service layers read from here.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 
 @dataclass
 class ModelConfig:
-    name:              str
-    display_name:      str
-    max_output_tokens: int   = 8192
+    name:                str
+    display_name:        str
+    provider:            str   = "gemini"  # "gemini" | "qwen"
+    max_output_tokens:   int   = 8192
     default_temperature: float = 0.7
-    supports_thinking: bool  = False
+    supports_thinking:   bool  = False
 
 
 # ── Supported model catalogue ─────────────────────────────────────────────────
 _MODELS: List[ModelConfig] = [
+    # ── Google Gemini ──────────────────────────────────────────────────────────
     ModelConfig(
         name="gemini-2.5-flash",
         display_name="Gemini 2.5 Flash",
@@ -43,6 +49,22 @@ _MODELS: List[ModelConfig] = [
     ModelConfig(
         name="gemini-3.1-pro-preview",
         display_name="Gemini 3.1 Pro (Preview)",
+    ),
+    # ── Alibaba Qwen (DashScope) ───────────────────────────────────────────────
+    ModelConfig(
+        name="qwen3.5-plus",
+        display_name="Qwen3.5-Plus",
+        provider="qwen",
+    ),
+    ModelConfig(
+        name="qwen3.5-flash",
+        display_name="Qwen3.5-Flash",
+        provider="qwen",
+    ),
+    ModelConfig(
+        name="qwen3-max",
+        display_name="Qwen3-Max",
+        provider="qwen",
     ),
 ]
 

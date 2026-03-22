@@ -10,6 +10,9 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+OPEN_MODAL_JS = "() => { document.body.classList.add('pi-modal-open'); }"
+CLOSE_MODAL_JS = "() => { document.body.classList.remove('pi-modal-open'); }"
+
 
 def build(
     prompt_service: PromptService,
@@ -91,13 +94,32 @@ def build(
                 load_to_workflow_btn = gr.Button(
                     "🚀 加载到一键优化", variant="secondary", size="sm"
                 )
-            content_preview = gr.Textbox(
-                label="版本内容",
-                lines=12,
-                max_lines=25,
-                interactive=False,
-            )
             load_status = gr.Textbox(label="操作状态", interactive=False)
+            gr.Markdown("点击版本行会弹出详情窗口；选择版本后也可以直接加载到后续页面。")
+
+    prompt_modal_backdrop = gr.Button(
+        "",
+        visible=False,
+        elem_classes=["pi-modal-backdrop"],
+    )
+
+    with gr.Column(visible=False, elem_classes=["pi-modal", "pi-modal-wide"]) as prompt_detail_modal:
+        with gr.Row():
+            gr.Markdown("### Prompt 详情")
+            close_prompt_detail_btn = gr.Button("关闭", size="sm")
+        prompt_detail_meta = gr.JSON(label="Prompt 信息")
+
+    with gr.Column(visible=False, elem_classes=["pi-modal", "pi-modal-wide"]) as version_detail_modal:
+        with gr.Row():
+            gr.Markdown("### 版本详情")
+            close_version_detail_btn = gr.Button("关闭", size="sm")
+        version_detail_meta = gr.JSON(label="版本信息")
+        version_detail_content = gr.Textbox(
+            label="版本内容",
+            lines=18,
+            max_lines=28,
+            interactive=False,
+        )
 
     def _on_refresh():
         prompts = prompt_service.list_prompts()
@@ -110,7 +132,21 @@ def build(
             ]
             for prompt in prompts
         ]
-        return rows, prompts, [], [], None, None, "", "已加载 Prompt 列表。"
+        return (
+            rows,
+            prompts,
+            [],
+            [],
+            None,
+            None,
+            "已加载 Prompt 列表。",
+            gr.update(visible=False),
+            gr.update(value=None),
+            gr.update(visible=False),
+            gr.update(value=None),
+            gr.update(value=""),
+            gr.update(visible=False),
+        )
 
     def _resolve_row_index(evt: gr.SelectData) -> Optional[int]:
         index = getattr(evt, "index", None)
@@ -123,7 +159,19 @@ def build(
     def _on_select_prompt(prompt_rows, evt: gr.SelectData):
         row_index = _resolve_row_index(evt)
         if row_index is None or row_index >= len(prompt_rows):
-            return [], [], None, "", "", ""
+            return (
+                [],
+                [],
+                None,
+                "",
+                "请选择一个版本查看详情。",
+                gr.update(visible=False),
+                gr.update(value=None),
+                gr.update(visible=False),
+                gr.update(value=None),
+                gr.update(value=""),
+                gr.update(visible=False),
+            )
         prompt = prompt_rows[row_index]
         versions = prompt_service.list_versions(prompt.id)
         version_rows = [
@@ -143,18 +191,49 @@ def build(
             f"当前版本: v{prompt.current_version}\n"
             f"更新时间: {prompt.updated_at[:19].replace('T', ' ')}"
         )
-        return version_rows, versions, prompt.id, summary, "", "请选择一个版本查看内容。"
+        prompt_detail = {
+            "prompt_id": prompt.id,
+            "name": prompt.name,
+            "description": prompt.description,
+            "current_version": prompt.current_version,
+            "version_count": len(versions),
+            "created_at": prompt.created_at,
+            "updated_at": prompt.updated_at,
+        }
+        return (
+            version_rows,
+            versions,
+            prompt.id,
+            summary,
+            f"已打开 Prompt {prompt.name} 的详情窗口，并同步加载版本历史。",
+            gr.update(visible=True),
+            prompt_detail,
+            gr.update(visible=False),
+            gr.update(value=None),
+            gr.update(value=""),
+            gr.update(visible=True),
+        )
 
     def _on_select_version(version_rows, evt: gr.SelectData):
         row_index = _resolve_row_index(evt)
         if row_index is None or row_index >= len(version_rows):
-            return None, "", ""
+            return None, "请选择一个有效版本。", gr.update(value=None), gr.update(value=""), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
         version = version_rows[row_index]
         resolved = prompt_service.get_version_with_content(version.id)
         if not resolved:
-            return None, "", f"❌ 找不到版本：{version.id}"
+            return None, f"❌ 找不到版本：{version.id}", gr.update(value=None), gr.update(value=""), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+        detail = {
+            "prompt_id": resolved.prompt_id,
+            "version_id": resolved.id,
+            "version": resolved.version,
+            "source_type": str(resolved.source_type),
+            "model_name": resolved.model_name or "—",
+            "parent_version_id": resolved.parent_version_id,
+            "summary": resolved.summary,
+            "created_at": resolved.created_at,
+        }
         content = resolved.content or "(内容为空)"
-        return resolved.id, content, f"已选中版本 v{resolved.version}。"
+        return resolved.id, f"已打开版本 v{resolved.version} 详情窗口。", detail, content, gr.update(visible=True), gr.update(visible=False), gr.update(visible=True)
 
     def _build_prompt_choice(prompt_id: str) -> str:
         prompt = prompt_service.get_prompt(prompt_id)
@@ -237,6 +316,9 @@ def build(
             f"✅ 已加载版本 v{version.version} 到一键优化页。",
         )
 
+    def _close_modals():
+        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+
     refresh_btn.click(
         fn=_on_refresh,
         outputs=[
@@ -246,9 +328,15 @@ def build(
             version_rows_state,
             selected_prompt_id,
             selected_version_id,
-            content_preview,
             load_status,
+            prompt_detail_modal,
+            prompt_detail_meta,
+            version_detail_modal,
+            version_detail_meta,
+            version_detail_content,
+            prompt_modal_backdrop,
         ],
+        js=CLOSE_MODAL_JS,
     )
 
     prompt_table.select(
@@ -259,16 +347,27 @@ def build(
             version_rows_state,
             selected_prompt_id,
             prompt_summary,
-            content_preview,
             load_status,
+            prompt_detail_modal,
+            prompt_detail_meta,
+            version_detail_modal,
+            version_detail_meta,
+            version_detail_content,
+            prompt_modal_backdrop,
         ],
+        js=OPEN_MODAL_JS,
     )
 
     version_table.select(
         fn=_on_select_version,
         inputs=[version_rows_state],
-        outputs=[selected_version_id, content_preview, load_status],
+        outputs=[selected_version_id, load_status, version_detail_meta, version_detail_content, version_detail_modal, prompt_detail_modal, prompt_modal_backdrop],
+        js=OPEN_MODAL_JS,
     )
+
+    close_prompt_detail_btn.click(fn=_close_modals, outputs=[prompt_detail_modal, version_detail_modal, prompt_modal_backdrop], js=CLOSE_MODAL_JS)
+    close_version_detail_btn.click(fn=_close_modals, outputs=[prompt_detail_modal, version_detail_modal, prompt_modal_backdrop], js=CLOSE_MODAL_JS)
+    prompt_modal_backdrop.click(fn=_close_modals, outputs=[prompt_detail_modal, version_detail_modal, prompt_modal_backdrop], js=CLOSE_MODAL_JS)
 
     load_to_optimize_btn.click(
         fn=_load_to_optimize,
@@ -328,7 +427,12 @@ def build(
             version_rows_state,
             selected_prompt_id,
             selected_version_id,
-            content_preview,
             load_status,
+            prompt_detail_modal,
+            prompt_detail_meta,
+            version_detail_modal,
+            version_detail_meta,
+            version_detail_content,
+            prompt_modal_backdrop,
         ],
     }

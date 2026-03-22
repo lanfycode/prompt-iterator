@@ -30,7 +30,8 @@ LOGS_DIR        = DATA_DIR / "logs"
 DB_PATH = DATA_DIR / "app.db"
 
 # ── API keys ──────────────────────────────────────────────────────────────────
-GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY:    str = os.environ.get("GEMINI_API_KEY", "")
+DASHSCOPE_API_KEY: str = os.environ.get("DASHSCOPE_API_KEY", "")  # Qwen / Alibaba DashScope
 
 # ── App settings ──────────────────────────────────────────────────────────────
 APP_TITLE = "Prompt Iterator"

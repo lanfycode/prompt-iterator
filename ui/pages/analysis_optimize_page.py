@@ -143,4 +143,11 @@ def build(
     return {
         "load_fn": _refresh,
         "load_outputs": [analysis_selector],
+        "analysis_selector": analysis_selector,
+        "analysis_id_state": analysis_id_state,
+        "prompt_id_state": prompt_id_state,
+        "original_box": original_box,
+        "optimize_validation": optimize_validation,
+        "optimize_btn": optimize_btn,
+        "opt_status": opt_status,
     }

@@ -121,4 +121,9 @@ def build(
     return {
         "load_fn": _refresh,
         "load_outputs": [run_selector],
+        "run_selector": run_selector,
+        "run_id_state": run_id_state,
+        "analyze_validation": analyze_validation,
+        "analyze_btn": analyze_btn,
+        "analysis_status": analysis_status,
     }

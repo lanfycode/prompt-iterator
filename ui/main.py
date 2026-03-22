@@ -33,6 +33,59 @@ from ui.pages import (
 )
 
 
+MODAL_CSS = """
+.pi-modal-backdrop {
+    position: fixed !important;
+    inset: 0;
+    z-index: 1900;
+}
+
+.pi-modal-backdrop > button {
+    width: 100vw !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: rgba(15, 23, 42, 0.52) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+.pi-modal-backdrop > button > span {
+    display: none !important;
+}
+
+.pi-modal {
+    position: fixed !important;
+    top: 5vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1100px, 92vw) !important;
+    max-height: 88vh;
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px;
+    background: #ffffff;
+    border: 1px solid #d7dbe2;
+    border-radius: 18px;
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+    z-index: 2000;
+}
+
+.pi-modal-wide {
+    width: min(1240px, 94vw) !important;
+}
+
+body.pi-modal-open,
+body.pi-modal-open .gradio-container {
+    overflow: hidden !important;
+    height: 100vh !important;
+}
+"""
+
+
 def create_ui(
     prompt_service: PromptService,
     optimization_service: OptimizationService,
@@ -48,6 +101,7 @@ def create_ui(
     with gr.Blocks(
         title="Prompt Iterator",
         analytics_enabled=False,
+        css=MODAL_CSS,
     ) as app:
         gr.Markdown(
             "# ✨ Prompt Iterator\n"
@@ -155,6 +209,18 @@ def create_ui(
                     single_test_bindings["preview_btn"],
                     single_test_bindings["run_btn"],
                     single_test_bindings["run_status"],
+                    analysis_bindings["run_selector"],
+                    analysis_bindings["run_id_state"],
+                    analysis_bindings["analyze_validation"],
+                    analysis_bindings["analyze_btn"],
+                    analysis_bindings["analysis_status"],
+                    analysis_optimize_bindings["analysis_selector"],
+                    analysis_optimize_bindings["analysis_id_state"],
+                    analysis_optimize_bindings["original_box"],
+                    analysis_optimize_bindings["prompt_id_state"],
+                    analysis_optimize_bindings["optimize_validation"],
+                    analysis_optimize_bindings["optimize_btn"],
+                    analysis_optimize_bindings["opt_status"],
                 )
 
         for bindings in [
