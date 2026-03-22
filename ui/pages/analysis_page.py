@@ -1,10 +1,7 @@
-"""
-Result Analysis page — analyse batch test results.
-"""
+"""Result Analysis page — analyse batch test results."""
 from __future__ import annotations
 
-import json
-from typing import Optional
+from typing import Any
 
 import gradio as gr
 
@@ -18,10 +15,10 @@ logger = get_logger(__name__)
 
 
 def build(
-    prompt_service:   PromptService,
+    prompt_service: PromptService,
     test_run_service: TestRunService,
     analysis_service: AnalysisService,
-) -> None:
+) -> dict[str, Any]:
     gr.Markdown(
         "## 结果分析\n"
         "选择一次已完成的测试任务，生成失败分类、错误模式和优化建议。"
@@ -30,14 +27,25 @@ def build(
     with gr.Row():
         with gr.Column(scale=1):
             run_selector = gr.Dropdown(
-                label="选择测试任务", choices=[], allow_custom_value=True,
+                label="选择测试任务", choices=[], allow_custom_value=False,
             )
             refresh_btn = gr.Button("🔄 刷新任务列表", size="sm")
+            language_selector = gr.Dropdown(
+                label="分析语言",
+                choices=[("中文", "zh"), ("英文", "en")],
+                value="zh",
+                allow_custom_value=False,
+            )
             model_selector = gr.Dropdown(
                 choices=get_model_names(), value=DEFAULT_MODEL_NAME,
                 label="分析模型", interactive=True,
             )
-            analyze_btn = gr.Button("🔍 执行分析", variant="primary")
+            analyze_validation = gr.Textbox(
+                label="表单提示",
+                interactive=False,
+                value="请选择一条测试任务后开始分析。",
+            )
+            analyze_btn = gr.Button("🔍 执行分析", variant="primary", interactive=False)
             analysis_status = gr.Textbox(label="状态", interactive=False)
 
         with gr.Column(scale=2):
@@ -65,7 +73,12 @@ def build(
         match = next((r for r in runs if r.id.startswith(prefix)), None)
         return match.id if match else None
 
-    def _on_analyze(run_id, model):
+    def _validate_run(val):
+        if not val:
+            return "请选择一条测试任务后开始分析。", gr.update(interactive=False)
+        return "参数已就绪，可以执行分析。", gr.update(interactive=True)
+
+    def _on_analyze(run_id, model, language):
         if not run_id:
             return gr.update(), gr.update(), "⚠ 请先选择测试任务。", None
         tr = test_run_service.get_test_run(run_id)
@@ -84,6 +97,7 @@ def build(
                 prompt_content=prompt_content,
                 result_file_path=tr.result_file_path,
                 model_name=model,
+                response_language=language,
             )
             report = analysis_service.load_report(analysis.id)
             return (
@@ -98,7 +112,13 @@ def build(
 
     refresh_btn.click(fn=_refresh, outputs=[run_selector])
     run_selector.change(fn=_on_select_run, inputs=[run_selector], outputs=[run_id_state])
+    run_selector.change(fn=_validate_run, inputs=[run_selector], outputs=[analyze_validation, analyze_btn])
     analyze_btn.click(
-        fn=_on_analyze, inputs=[run_id_state, model_selector],
+        fn=_on_analyze, inputs=[run_id_state, model_selector, language_selector],
         outputs=[summary_box, report_output, analysis_status, analysis_id_state],
     )
+
+    return {
+        "load_fn": _refresh,
+        "load_outputs": [run_selector],
+    }

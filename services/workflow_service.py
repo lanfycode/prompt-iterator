@@ -77,6 +77,9 @@ class WorkflowService:
         max_rounds:       int   = 5,
         num_cases:        int   = 10,
         concurrency:      int   = 3,
+        analysis_language: str = "zh",
+        on_started:        Optional[Callable[[str], None]] = None,
+        on_round_start:    Optional[Callable[[int], None]] = None,
         on_round_complete: Optional[Callable[[int, float, str], None]] = None,
         on_progress:       Optional[Callable[[int, int, str], None]] = None,
     ) -> WorkflowRun:
@@ -107,6 +110,8 @@ class WorkflowService:
         )
         self._wr_repo.create(wr)
         self._cancel_flags[wr.id] = False
+        if on_started:
+            on_started(wr.id)
 
         prompt_content = version.content
         current_version_id = version.id
@@ -121,6 +126,9 @@ class WorkflowService:
                     wr.stop_reason = "User cancelled"
                     wr.status = WorkflowStatus.CANCELED
                     break
+
+                if on_round_start:
+                    on_round_start(round_num)
 
                 wr.current_round = round_num
 
@@ -178,6 +186,7 @@ class WorkflowService:
                     prompt_content=prompt_content,
                     result_file_path=tr.result_file_path or "",
                     model_name=model_name,
+                    response_language=analysis_language,
                 )
                 ir.analysis_id = analysis.id
                 self._ir_repo.update(ir)

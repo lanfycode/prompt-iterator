@@ -44,6 +44,11 @@ Your job is to produce a structured analysis report in JSON with these fields:
 Return ONLY valid JSON — no preamble, no explanation.\
 """
 
+_LANGUAGE_HINTS = {
+    "zh": "All natural-language values in the JSON must be written in Simplified Chinese.",
+    "en": "All natural-language values in the JSON must be written in English.",
+}
+
 
 class ResultAnalyzerAgent(BaseAgent):
 
@@ -64,6 +69,7 @@ class ResultAnalyzerAgent(BaseAgent):
         test_results:   List[Dict[str, Any]],
         model_name:     str,
         temperature:    float = 0.3,
+        response_language: str = "zh",
     ) -> Dict[str, Any]:
         """
         Analyse *test_results* and return a structured report dict.
@@ -80,7 +86,11 @@ class ResultAnalyzerAgent(BaseAgent):
         response: LLMResponse = self._client.generate(
             model_name=model_name,
             prompt=user_message,
-            system_instruction=self.system_instruction,
+            system_instruction=(
+                self.system_instruction
+                + "\n\n"
+                + _LANGUAGE_HINTS.get(response_language, _LANGUAGE_HINTS["zh"])
+            ),
             temperature=temperature,
         )
 

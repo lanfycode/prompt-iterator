@@ -12,6 +12,7 @@ Cross-page integration:
 """
 from __future__ import annotations
 
+import difflib
 import gradio as gr
 from typing import Tuple
 
@@ -51,6 +52,11 @@ def build(
                 interactive=True,
                 placeholder="在此输入或粘贴要优化的 Prompt…",
             )
+            optimize_validation = gr.Textbox(
+                label="输入提示",
+                interactive=False,
+                value="请填写原始 Prompt 和优化要求。",
+            )
             # Hidden state: the prompt_id for saving as a new version
             prompt_id_state = gr.State(value=None)
 
@@ -77,7 +83,7 @@ def build(
                 minimum=0.0, maximum=1.0, value=0.7, step=0.05,
                 label="Temperature",
             )
-            optimize_btn = gr.Button("⚡ 执行优化", variant="primary")
+            optimize_btn = gr.Button("⚡ 执行优化", variant="primary", interactive=False)
 
         # ── Right: result ─────────────────────────────────────────────────────
         with gr.Column(scale=1):
@@ -90,6 +96,8 @@ def build(
             )
             call_info = gr.JSON(label="调用信息", visible=True)
 
+    diff_html = gr.HTML(label="变更对比")
+
     gr.Markdown("### 💾 保存优化版本")
     with gr.Row():
         save_name = gr.Textbox(
@@ -97,8 +105,22 @@ def build(
             placeholder="留空 → 追加版本；填写名称 → 另存为新 Prompt",
             scale=3,
         )
-        save_btn = gr.Button("保存", variant="secondary", scale=1)
+        save_btn = gr.Button("保存", variant="secondary", scale=1, interactive=False)
     save_status = gr.Textbox(label="操作状态", interactive=False)
+
+    def _validate_optimize(original: str, opt_req: str):
+        if not original.strip() and not opt_req.strip():
+            return "请填写原始 Prompt 和优化要求。", gr.update(interactive=False)
+        if not original.strip():
+            return "请先填写原始 Prompt。", gr.update(interactive=False)
+        if not opt_req.strip():
+            return "请先填写优化要求。", gr.update(interactive=False)
+        return "参数已就绪，可以执行优化。", gr.update(interactive=True)
+
+    def _validate_save(optimized: str):
+        if not optimized.strip():
+            return "请先生成优化结果。", gr.update(interactive=False)
+        return "优化结果已生成，可以保存。", gr.update(interactive=True)
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -110,10 +132,10 @@ def build(
     ):
         if not original.strip():
             gr.Warning("请填写原始 Prompt。")
-            return gr.update(), gr.update()
+            return gr.update(), gr.update(), gr.update()
         if not opt_req.strip():
             gr.Warning("请填写优化要求。")
-            return gr.update(), gr.update()
+            return gr.update(), gr.update(), gr.update()
         try:
             text, resp = prompt_service.optimize_prompt(
                 original_prompt=original,
@@ -128,11 +150,19 @@ def build(
                 "output_tokens": resp.output_tokens,
                 "latency_ms":    round(resp.latency_ms, 1),
             }
-            return text, meta
+            diff = difflib.HtmlDiff(wrapcolumn=80).make_table(
+                original.splitlines(),
+                text.splitlines(),
+                fromdesc="原始 Prompt",
+                todesc="优化后 Prompt",
+                context=True,
+                numlines=2,
+            )
+            return text, meta, diff
         except Exception as exc:
             logger.error("Optimisation failed: %s", exc)
             gr.Error(f"优化失败：{exc}")
-            return gr.update(), gr.update()
+            return gr.update(), gr.update(), gr.update()
 
     def _on_save(
         optimised:   str,
@@ -176,12 +206,27 @@ def build(
     optimize_btn.click(
         fn=_on_optimize,
         inputs=[original_box, optimization_input, model_selector, temperature_slider],
-        outputs=[optimized_box, call_info],
+        outputs=[optimized_box, call_info, diff_html],
     )
     save_btn.click(
         fn=_on_save,
         inputs=[optimized_box, model_selector, prompt_id_state, save_name],
         outputs=[save_status],
+    )
+    original_box.change(
+        fn=_validate_optimize,
+        inputs=[original_box, optimization_input],
+        outputs=[optimize_validation, optimize_btn],
+    )
+    optimization_input.change(
+        fn=_validate_optimize,
+        inputs=[original_box, optimization_input],
+        outputs=[optimize_validation, optimize_btn],
+    )
+    optimized_box.change(
+        fn=_validate_save,
+        inputs=[optimized_box],
+        outputs=[save_status, save_btn],
     )
 
     return original_box, prompt_id_state

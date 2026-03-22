@@ -53,6 +53,7 @@ class TestRunService:
         model_name:        str,
         judge_model_name:  str,
         concurrency:       int = 3,
+        on_started:        Optional[Callable[[str], None]] = None,
         on_progress:       Optional[Callable[[int, int, str], None]] = None,
     ) -> TestRun:
         """
@@ -85,6 +86,8 @@ class TestRunService:
         tr.status = TestRunStatus.RUNNING
         tr.started_at = _now()
         self._repo.update(tr)
+        if on_started:
+            on_started(run_id)
 
         results: List[Dict[str, Any]] = []
         log_lines: List[str] = []
@@ -182,6 +185,95 @@ class TestRunService:
 
         return tr
 
+    def run_single_test(
+        self,
+        prompt_version_id: str,
+        model_name: str,
+        user_input: str,
+        rendered_prompt: str,
+        final_input: str,
+        variables: Optional[Dict[str, Any]] = None,
+        template_id: Optional[str] = None,
+        template_name: Optional[str] = None,
+        template_content: Optional[str] = None,
+    ) -> Tuple[TestRun, Dict[str, Any]]:
+        """Execute one single test and persist it as a regular test run."""
+        run_id = str(uuid.uuid4())
+        now = _now()
+
+        tr = TestRun(
+            id=run_id,
+            prompt_version_id=prompt_version_id,
+            test_case_id=None,
+            model_name=model_name,
+            status=TestRunStatus.PENDING,
+            total=1,
+            passed=0,
+            failed=0,
+            result_file_path=None,
+            log_file_path=None,
+            started_at=None,
+            completed_at=None,
+            created_at=now,
+        )
+        self._repo.create(tr)
+
+        tr.status = TestRunStatus.RUNNING
+        tr.started_at = _now()
+        self._repo.update(tr)
+
+        log_lines = ["[1/1] Single test started"]
+        result: Dict[str, Any]
+
+        try:
+            response: LLMResponse = self._client.generate(
+                model_name=model_name,
+                prompt=final_input,
+                system_instruction=rendered_prompt,
+            )
+            result = {
+                "mode": "single_test",
+                "user_input": user_input,
+                "rendered_prompt": rendered_prompt,
+                "final_input": final_input,
+                "actual_output": response.text,
+                "variables": variables or {},
+                "template_id": template_id,
+                "template_name": template_name,
+                "template_content": template_content,
+                "latency_ms": response.latency_ms,
+                "prompt_tokens": response.prompt_tokens,
+                "output_tokens": response.output_tokens,
+            }
+            tr.status = TestRunStatus.COMPLETED
+            tr.passed = 1
+            log_lines.append("[1/1] Single test completed")
+        except Exception as exc:
+            logger.error("Single test failed (run_id=%s): %s", run_id, exc)
+            result = {
+                "mode": "single_test",
+                "user_input": user_input,
+                "rendered_prompt": rendered_prompt,
+                "final_input": final_input,
+                "actual_output": f"[ERROR] {exc}",
+                "variables": variables or {},
+                "template_id": template_id,
+                "template_name": template_name,
+                "template_content": template_content,
+                "latency_ms": 0.0,
+                "prompt_tokens": 0,
+                "output_tokens": 0,
+            }
+            tr.status = TestRunStatus.FAILED
+            tr.failed = 1
+            log_lines.append(f"[1/1] Single test failed: {exc}")
+
+        tr.completed_at = _now()
+        tr.result_file_path = self._tr_storage.save_results(run_id, [result])
+        tr.log_file_path = self._tr_storage.save_log(run_id, log_lines)
+        self._repo.update(tr)
+        return tr, result
+
     def get_test_run(self, run_id: str) -> Optional[TestRun]:
         return self._repo.get(run_id)
 
@@ -208,6 +300,7 @@ class TestRunService:
         cases:            List[Dict[str, Any]],
         judge_model_name: str,
         concurrency:      int = 3,
+        on_started:       Optional[Callable[[str], None]] = None,
         on_progress:      Optional[Callable[[int, int, str], None]] = None,
     ) -> TestRun:
         """Re-run a failed test by creating a new test run with the same params."""
@@ -223,5 +316,6 @@ class TestRunService:
             model_name=old_tr.model_name,
             judge_model_name=judge_model_name,
             concurrency=concurrency,
+            on_started=on_started,
             on_progress=on_progress,
         )

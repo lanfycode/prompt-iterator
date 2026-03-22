@@ -71,6 +71,7 @@ def main() -> None:
         variable_service=variable_service,
         template_service=template_service,
     )
+    app.queue(default_concurrency_limit=8)
 
     # 4. Launch
     logger.info("Launching on http://0.0.0.0:%d", APP_PORT)

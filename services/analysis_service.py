@@ -49,6 +49,7 @@ class AnalysisService:
         result_file_path: str,
         model_name:     str,
         temperature:    float = 0.3,
+        response_language: str = "zh",
     ) -> Analysis:
         """
         Analyse the results of a test run and persist the report.
@@ -64,6 +65,7 @@ class AnalysisService:
             test_results=results,
             model_name=model_name,
             temperature=temperature,
+            response_language=response_language,
         )
 
         analysis_id = str(uuid.uuid4())

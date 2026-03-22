@@ -40,6 +40,11 @@ def build(prompt_service: PromptService) -> None:
                 lines=8,
                 max_lines=20,
             )
+            requirement_validation = gr.Textbox(
+                label="输入提示",
+                interactive=False,
+                value="请先输入需求描述。",
+            )
             model_selector = gr.Dropdown(
                 choices=get_model_names(),
                 value=DEFAULT_MODEL_NAME,
@@ -50,7 +55,7 @@ def build(prompt_service: PromptService) -> None:
                 minimum=0.0, maximum=1.0, value=0.7, step=0.05,
                 label="Temperature（越高越有创意，越低越确定）",
             )
-            generate_btn = gr.Button("⚡ 生成 Prompt", variant="primary")
+            generate_btn = gr.Button("⚡ 生成 Prompt", variant="primary", interactive=False)
 
         # ── Right: outputs ────────────────────────────────────────────────────
         with gr.Column(scale=1):
@@ -69,8 +74,20 @@ def build(prompt_service: PromptService) -> None:
             placeholder="为这个 Prompt 起一个名称...",
             scale=3,
         )
-        save_btn = gr.Button("保存", variant="secondary", scale=1)
+        save_btn = gr.Button("保存", variant="secondary", scale=1, interactive=False)
     save_status = gr.Textbox(label="操作状态", interactive=False)
+
+    def _validate_generate(requirement: str):
+        if not requirement.strip():
+            return "请填写需求描述后再生成。", gr.update(interactive=False)
+        return "需求描述已就绪，可以生成。", gr.update(interactive=True)
+
+    def _validate_save(content: str, name: str):
+        if not content.strip():
+            return "请先生成 Prompt 内容。", gr.update(interactive=False)
+        if not name.strip():
+            return "请填写 Prompt 名称后再保存。", gr.update(interactive=False)
+        return "内容与名称已就绪，可以保存。", gr.update(interactive=True)
 
     # ── Event handlers ────────────────────────────────────────────────────────
 
@@ -127,4 +144,19 @@ def build(prompt_service: PromptService) -> None:
         fn=_on_save,
         inputs=[result_box, save_name, model_selector],
         outputs=[save_status],
+    )
+    requirement_box.change(
+        fn=_validate_generate,
+        inputs=[requirement_box],
+        outputs=[requirement_validation, generate_btn],
+    )
+    result_box.change(
+        fn=_validate_save,
+        inputs=[result_box, save_name],
+        outputs=[save_status, save_btn],
+    )
+    save_name.change(
+        fn=_validate_save,
+        inputs=[result_box, save_name],
+        outputs=[save_status, save_btn],
     )

@@ -1,10 +1,7 @@
-"""
-Test Case Generation page — generate and view structured test cases.
-"""
+"""Test Case Generation page — generate and view structured test cases."""
 from __future__ import annotations
 
-import json
-from typing import Optional
+from typing import Any
 
 import gradio as gr
 
@@ -17,9 +14,9 @@ logger = get_logger(__name__)
 
 
 def build(
-    prompt_service:    PromptService,
+    prompt_service: PromptService,
     test_case_service: TestCaseService,
-) -> None:
+) -> dict[str, Any]:
     gr.Markdown(
         "## 测试用例生成\n"
         "选择一个 Prompt，自动生成结构化测试用例集（含基线、边界、对抗场景）。"
@@ -28,7 +25,7 @@ def build(
     with gr.Row():
         with gr.Column(scale=1):
             prompt_selector = gr.Dropdown(
-                label="选择 Prompt", choices=[], allow_custom_value=True,
+                label="选择 Prompt", choices=[], allow_custom_value=False,
             )
             refresh_btn = gr.Button("🔄 刷新 Prompt 列表", size="sm")
             model_selector = gr.Dropdown(
@@ -39,7 +36,12 @@ def build(
                 minimum=3, maximum=30, value=10, step=1,
                 label="用例数量",
             )
-            generate_btn = gr.Button("⚡ 生成测试用例", variant="primary")
+            generate_validation = gr.Textbox(
+                label="表单提示",
+                interactive=False,
+                value="请选择一个 Prompt 后开始生成。",
+            )
+            generate_btn = gr.Button("⚡ 生成测试用例", variant="primary", interactive=False)
 
         with gr.Column(scale=2):
             cases_output = gr.JSON(label="生成的测试用例")
@@ -69,6 +71,11 @@ def build(
             return None, None
         latest = prompt_service.get_latest_version_with_content(match.id)
         return match.id, latest.id if latest else None
+
+    def _validate_generate(selector_value: str):
+        if not selector_value:
+            return "请选择一个 Prompt 后开始生成。", gr.update(interactive=False)
+        return "参数已就绪，可以生成测试用例。", gr.update(interactive=True)
 
     def _on_generate(prompt_id, version_id, model, num_cases):
         if not prompt_id or not version_id:
@@ -103,6 +110,11 @@ def build(
         fn=_on_select_prompt, inputs=[prompt_selector],
         outputs=[prompt_id_state, version_id_state],
     )
+    prompt_selector.change(
+        fn=_validate_generate,
+        inputs=[prompt_selector],
+        outputs=[generate_validation, generate_btn],
+    )
 
     generate_btn.click(
         fn=_on_generate,
@@ -111,3 +123,11 @@ def build(
     )
 
     refresh_tc_btn.click(fn=_refresh_tc_list, outputs=[tc_list_box])
+
+    def _initial_load():
+        return _refresh_prompts(), _refresh_tc_list()
+
+    return {
+        "load_fn": _initial_load,
+        "load_outputs": [prompt_selector, tc_list_box],
+    }
