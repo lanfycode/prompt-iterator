@@ -1,16 +1,15 @@
 """
-Domain models for all phases of Prompt-Iterator.
+Domain models for Prompt-Iterator.
 
 Phase 1: Prompt, PromptVersion
-Phase 2: TestCase, TestRun, Analysis, IterationRound (stubs defined here
-         so the full schema can be created at startup and extended later
-         without a migration).
+Phase 2: TestCase, TestRun, Analysis, IterationRound, WorkflowRun,
+         Variable, Template
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 
 # ── Shared enums ──────────────────────────────────────────────────────────────
@@ -22,12 +21,24 @@ class SourceType(str, Enum):
 
 
 class TestRunStatus(str, Enum):
-    """Phase 2: status values for batch test runs."""
     PENDING   = "pending"
     RUNNING   = "running"
     COMPLETED = "completed"
     FAILED    = "failed"
     CANCELED  = "canceled"
+
+
+class WorkflowStatus(str, Enum):
+    """Status for one-click optimisation workflow runs."""
+    PENDING              = "pending"
+    GENERATING_TESTCASES = "generating_testcases"
+    TESTING              = "testing"
+    ANALYZING            = "analyzing"
+    OPTIMIZING           = "optimizing"
+    TESTING_NEXT_ROUND   = "testing_next_round"
+    COMPLETED            = "completed"
+    FAILED               = "failed"
+    CANCELED             = "canceled"
 
 
 # ── Phase 1 models ────────────────────────────────────────────────────────────
@@ -62,11 +73,11 @@ class PromptVersion:
     content:          Optional[str] = None   # populated by storage layer
 
 
-# ── Phase 2 models (stubs — complete structure defined for schema consistency) ─
+# ── Phase 2 models ────────────────────────────────────────────────────────────
 
 @dataclass
 class TestCase:
-    """Phase 2: A named set of test cases stored as a JSON file."""
+    """A named set of test cases stored as a JSON file."""
     id:               str
     name:             str
     source_type:      str           # "uploaded" | "generated"
@@ -77,7 +88,7 @@ class TestCase:
 
 @dataclass
 class TestRun:
-    """Phase 2: Execution record for a batch test."""
+    """Execution record for a batch test."""
     id:                str
     prompt_version_id: str
     test_case_id:      Optional[str]
@@ -95,7 +106,7 @@ class TestRun:
 
 @dataclass
 class Analysis:
-    """Phase 2: Structured analysis report derived from a TestRun."""
+    """Structured analysis report derived from a TestRun."""
     id:          str
     test_run_id: str
     file_path:   str
@@ -105,7 +116,7 @@ class Analysis:
 
 @dataclass
 class IterationRound:
-    """Phase 2: A single round inside an automated one-click optimization run."""
+    """A single round inside an automated one-click optimization run."""
     id:               str
     workflow_run_id:  str
     round_number:     int
@@ -114,3 +125,41 @@ class IterationRound:
     analysis_id:      Optional[str]
     pass_rate:        Optional[float]
     created_at:       str
+
+
+@dataclass
+class WorkflowRun:
+    """Top-level record for a one-click optimisation run."""
+    id:                str
+    prompt_id:         str
+    model_name:        str
+    judge_model_name:  str
+    status:            str          # WorkflowStatus value
+    target_pass_rate:  float
+    max_rounds:        int
+    current_round:     int
+    stop_reason:       Optional[str]
+    created_at:        str
+    completed_at:      Optional[str]
+
+
+@dataclass
+class Variable:
+    """A reusable variable for prompt/template rendering."""
+    id:         str
+    name:       str
+    value:      str
+    scope:      str
+    created_at: str
+    updated_at: str
+
+
+@dataclass
+class Template:
+    """A context template for assembling final inputs."""
+    id:          str
+    name:        str
+    content:     str
+    description: str
+    created_at:  str
+    updated_at:  str

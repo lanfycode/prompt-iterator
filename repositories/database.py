@@ -110,6 +110,23 @@ CREATE TABLE IF NOT EXISTS templates (
 );
 """
 
+_DDL_WORKFLOW_RUNS = """
+CREATE TABLE IF NOT EXISTS workflow_runs (
+    id                TEXT PRIMARY KEY,
+    prompt_id         TEXT NOT NULL,
+    model_name        TEXT NOT NULL,
+    judge_model_name  TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'pending',
+    target_pass_rate  REAL NOT NULL DEFAULT 0.8,
+    max_rounds        INTEGER NOT NULL DEFAULT 5,
+    current_round     INTEGER NOT NULL DEFAULT 0,
+    stop_reason       TEXT,
+    created_at        TEXT NOT NULL,
+    completed_at      TEXT,
+    FOREIGN KEY (prompt_id) REFERENCES prompts(id)
+);
+"""
+
 _DDL_ITERATION_ROUNDS = """
 CREATE TABLE IF NOT EXISTS iteration_rounds (
     id                TEXT PRIMARY KEY,
@@ -120,6 +137,7 @@ CREATE TABLE IF NOT EXISTS iteration_rounds (
     analysis_id       TEXT,
     pass_rate         REAL,
     created_at        TEXT NOT NULL,
+    FOREIGN KEY (workflow_run_id)    REFERENCES workflow_runs(id),
     FOREIGN KEY (prompt_version_id) REFERENCES prompt_versions(id),
     FOREIGN KEY (test_run_id)       REFERENCES test_runs(id),
     FOREIGN KEY (analysis_id)       REFERENCES analyses(id)
@@ -134,6 +152,7 @@ _ALL_DDL = [
     _DDL_ANALYSES,
     _DDL_VARIABLES,
     _DDL_TEMPLATES,
+    _DDL_WORKFLOW_RUNS,
     _DDL_ITERATION_ROUNDS,
 ]
 
